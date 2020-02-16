@@ -1,75 +1,90 @@
-beforeEach(async () => {
-  await Blog.deleteMany({})
-  let blogObject = new Blog(blogList[0])
-  await blogObject.save()
+const blogRouter = require('express').Router()
+const Blog = require('../models/blog')
+const User = require('../models/user')
 
-  blogObject = new Blog(blogList[1])
-  await blogObject.save()
 
-  blogObject = new Blog(blogList[2])
-  await blogObject.save()
+  
+blogRouter.get('/', async (req, res) => {
+  const blogs = await Blog
+    .find({})
+    .populate('user', {username: 1, name: 1})
+
+  res.json(blogs.map(entry => entry.toJSON()))
 })
-test("should return the right amount of blogs", async () => {
-  const response = await api.get("/api/blogs")
-  expect(response.body.length).toBe(3)
-})
-test("should return the blogs in json format", async () => {
-  await api
-    .get("/api/blogs")
-    .expect(200)
-    .expect("Content-Type", /application\/json/)
-})
-test("should verify the existence of id property in response", async () => {
-  const response = await api.get("/api/blogs")
-  for (let blog of response.body) {
-    expect(blog.id).toBeDefined()
-  }
-})
-test("should verify a new blog has been created", async () => {
-  const newBlog = new Blog({
-    title: "a blog created",
-    author: "John",
-    url: "http://devopsinpractice.com",
-    likes: 6
-  })
-  await api
-    .post("/api/blogs")
-    .send(newBlog)
-    .expect(201)
-    .expect("content-type", /application\/json/)
-  const blogsInDb = await Blog.find({})
-  blogsInDb.map(blog => blog.toJSON())
-  expect(blogsInDb.length).toBe(blogList.length + 1)
-})
-test("should default likes to zero in a blog without the like property", async () => {
-  const blogWithoutLikes = new Blog({
-    title: "test blog without likes",
-    author: "Joe",
-    url: "myurl.com"
-  })
-  await api
-    .post("/api/blogs")
-    .send(blogWithoutLikes)
-    .expect(201)
-    .expect("content-type", /application\/json/)
-  const blogsInDb = await Blog.find({})
-  const blogsindatabase = blogsInDb.map(blogs => blogs.toJSON())
-  for (let blog of blogsindatabase) {
-    if (!blog.hasOwnProperty("likes")) {
-      blog.likes = 0
+
+blogRouter.post('/', async (req, res, next) => {
+  try{
+    const body = req.body
+
+    let userInDb = await User.findById(body.userId)
+  
+    const newBlogToAdd = {
+      title: body.title,
+      author: body.author,
+      url: body.url,
+      likes: body.likes || 0,
+      user: userInDb._id
     }
+
+    const blogToAdd = new Blog(newBlogToAdd)
+    const addedBlog = await blogToAdd.save(newBlogToAdd)
+
+    userInDb.blogs = userInDb.blogs.concat(addedBlog.id)
+
+    await userInDb.save()
+
+    res.status(201).json(addedBlog)
+
+  }catch(exception){
+    next(exception)
   }
-  expect(blogsindatabase[3].likes).toBe(0)
-})
-test("should reject an incomplete request", async () => {
-  const blogWithoutTitleAndUrl = new Blog({
-    author: "John",
-    likes: 2
-  })
-  await api
-    .post("/api/blogs")
-    .send(blogWithoutTitleAndUrl)
-    .expect(400)
 })
 
-afterAll(() => mongoose.connection.close())
+blogRouter.delete('/:id', async (req, res, next) => {
+  try{
+    const id =  req.params.id
+  
+    await Blog.findByIdAndDelete(id)
+
+    res.status(204).end()
+
+  }catch(error){
+    next(error)
+  }
+})
+
+blogRouter.delete('/:id', async (req, res, next) => {
+  try{
+    const id =  req.params.id
+    console.log(id)
+  
+    await Blog.findByIdAndDelete(id)
+    res.status(204).end()
+  }catch(error){
+    next(error)
+  }
+})
+
+blogRouter.put('/:id', async (req, res, next) => {
+  try{
+    const id = req.params.id
+    const body = req.body
+
+    const newBlog = {
+      title: body.title,
+      author: body.author,
+      url: body.url,
+      likes: body.likes
+    }
+  
+    const updatedBlog = await Blog.findByIdAndUpdate(id, newBlog, { new: true })
+
+    res.json(updatedBlog.toJSON()).end
+  }catch(error){
+    next(error)
+  }
+})
+
+module.exports = blogRouter
+
+npx jest -t 'when list has only one blog equals the likes of that'
